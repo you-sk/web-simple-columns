@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Colums</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            overflow: hidden; /* Prevent body scroll */
+        }
+        .game-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 2rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+        canvas#gameCanvas {
+            background-color: #0f0f1a;
+            border-radius: 8px;
+            border: 4px solid #4a4a7f;
+            box-shadow: 0 0 20px rgba(74, 74, 127, 0.5);
+        }
+        .info-panel {
+            background-color: #16213e;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 2px solid #4a4a7f;
+            width: 300px; 
+            height: 608px; /* canvas height + border */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .info-panel h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #fca311;
+            text-align: center;
+        }
+        .info-panel p {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        .info-panel .score-value {
+            font-size: 1.8rem;
+            color: #ffffff;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        #nextCanvas {
+            background-color: #0f0f1a;
+            border-radius: 4px;
+            display: block;
+            margin: 1rem auto;
+        }
+        .start-button, .restart-button {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #fca311;
+            color: #1a1a2e;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px #c97b00;
+            width: 100%;
+        }
+        .start-button:hover, .restart-button:hover {
+            background-color: #ffb74d;
+        }
+         .start-button:active, .restart-button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #c97b00;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(26, 26, 46, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-content {
+            background-color: #16213e;
+            padding: 3rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 4px solid #4a4a7f;
+        }
+        .controls-text {
+            font-size: 0.8rem;
+            line-height: 1.5;
+            text-align: left !important;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl mb-4 text-white">Simple Web Columns</h1>
+
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="info-panel">
+            <div>
+                <h2>スコア</h2>
+                <p id="score" class="score-value">0</p>
+                <h2 class="mt-8">レベル</h2>
+                <p id="level" class="score-value">1</p>
+                <h2 class="mt-8">NEXT</h2>
+                <canvas id="nextCanvas"></canvas>
+            </div>
+            
+            <div class="text-gray-400">
+                <h3 class="text-lg mb-2 text-white text-center">操作方法</h3>
+                <p class="controls-text"><span class="text-fca311">← →</span> : 左右移動</p>
+                <p class="controls-text"><span class="text-fca311">↑ / SPC</span> : 宝石回転</p>
+                <p class="controls-text"><span class="text-fca311">↓</span> : 高速落下</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ★追加: ゲーム開始モーダル -->
+    <div id="startGameModal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-3xl font-bold mb-6 text-white">Columns風ゲーム</h2>
+            <p class="text-lg mb-8">ボタンを押してゲーム開始</p>
+            <button id="startButton" class="start-button">ゲーム開始</button>
+        </div>
+    </div>
+
+    <div id="gameOverModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 class="text-4xl font-bold mb-4 text-red-500">ゲームオーバー</h2>
+            <p class="text-xl mb-2">最終スコア:</p>
+            <p id="finalScore" class="text-3xl font-bold mb-8"></p>
+            <button id="restartButton" class="restart-button">もう一度プレイ</button>
+        </div>
+    </div>
+
+
+    <script>
+        // --- 定数と設定 ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('nextCanvas');
+        const nextCtx = nextCanvas.getContext('2d');
+        
+        const BOARD_WIDTH = 10;
+        const BOARD_HEIGHT = 20;
+        const BLOCK_SIZE = 30;
+
+        canvas.width = BOARD_WIDTH * BLOCK_SIZE;
+        canvas.height = BOARD_HEIGHT * BLOCK_SIZE;
+        nextCanvas.width = BLOCK_SIZE;
+        nextCanvas.height = BLOCK_SIZE * 3;
+
+        const COLORS = ['#FF4136', '#2ECC40', '#0074D9', '#FFDC00', '#B10DC9', '#FF851B'];
+        const FLASH_DURATION = 200;
+        const INITIAL_DROP_SPEED = 500;
+        const SPEED_INCREASE_FACTOR = 0.9;
+        const LEVEL_UP_SCORE = 1000;
+
+        function createBoard() {
+            return Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(null));
+        }
+
+        // --- ゲーム状態変数 ---
+        let board = createBoard();
+        let score = 0;
+        let level = 1;
+        let gameOver = false;
+        let isClearing = false;
+        let gameStarted = false;
+        let activeColumn = null;
+        let nextColumnGems = [];
+        let dropCounter = 0;
+        let activeDropSpeed = INITIAL_DROP_SPEED;
+        let lastTime = 0;
+        let chainCount = 0;
+
+        // --- DOM要素 ---
+        const scoreElement = document.getElementById('score');
+        const levelElement = document.getElementById('level');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const finalScoreElement = document.getElementById('finalScore');
+        const startGameModal = document.getElementById('startGameModal'); // ★追加
+        
+        function resetGame() {
+            board = createBoard();
+            score = 0;
+            level = 1;
+            activeDropSpeed = INITIAL_DROP_SPEED;
+            gameOver = false;
+            isClearing = false;
+            gameStarted = true;
+            chainCount = 0;
+            updateScoreUI();
+            gameOverModal.classList.add('hidden');
+            startGameModal.classList.add('hidden'); // ★追加: 開始モーダルも隠す
+            nextColumnGems = createRandomGems();
+            createNewColumn();
+            lastTime = 0;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function createRandomGems() {
+            return [getRandomColor(), getRandomColor(), getRandomColor()];
+        }
+
+        function createNewColumn() {
+            activeColumn = {
+                x: Math.floor(BOARD_WIDTH / 2), // 中央から開始
+                y: -3,
+                gems: nextColumnGems
+            };
+            nextColumnGems = createRandomGems();
+        }
+
+        function getRandomColor() {
+            return COLORS[Math.floor(Math.random() * COLORS.length)];
+        }
+
+        function rotateColumn() {
+            if (activeColumn) {
+                activeColumn.gems.push(activeColumn.gems.shift());
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0f0f1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawBoard();
+            if (activeColumn) {
+                drawColumn(ctx, activeColumn.x, activeColumn.y, activeColumn.gems);
+            }
+            drawNextGems();
+        }
+
+        function drawBoard() {
+            for (let y = 0; y < BOARD_HEIGHT; y++) {
+                for (let x = 0; x < BOARD_WIDTH; x++) {
+                    if (board[y] && board[y][x]) {
+                        drawBlock(ctx, x, y, board[y][x]);
+                    }
+                }
+            }
+        }
+
+        function drawColumn(context, startX, startY, gems) {
+            gems.forEach((color, i) => {
+                drawBlock(context, startX, startY + i, color);
+            });
+        }
+        
+        function drawBlock(context, x, y, color) {
+            if (y < 0) return;
+            const px = x * BLOCK_SIZE;
+            const py = y * BLOCK_SIZE;
+            
+            context.fillStyle = color;
+            context.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+            
+            context.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            context.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE / 8);
+            context.fillRect(px, py, BLOCK_SIZE / 8, BLOCK_SIZE);
+
+            context.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            context.fillRect(px, py + BLOCK_SIZE * 7 / 8, BLOCK_SIZE, BLOCK_SIZE / 8);
+            context.fillRect(px + BLOCK_SIZE * 7 / 8, py, BLOCK_SIZE / 8, BLOCK_SIZE);
+
+            context.strokeStyle = '#0f0f1a';
+            context.lineWidth = 2;
+            context.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+        }
+
+        function drawNextGems() {
+            nextCtx.fillStyle = '#0f0f1a';
+            nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+            // ゲーム開始前はNextを生成しない
+            if (gameStarted || nextColumnGems.length > 0) {
+                 drawColumn(nextCtx, 0, 0, nextColumnGems);
+            }
+        }
+
+        function update(time = 0) {
+            if (!gameStarted || gameOver || isClearing) return;
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+            if (dropCounter > activeDropSpeed) {
+                dropColumn();
+            }
+        }
+        
+        function dropColumn() {
+            if (!activeColumn) return;
+            if (!checkCollision(activeColumn.x, activeColumn.y + 1, activeColumn.gems)) {
+                 activeColumn.y++;
+            } else {
+                fixColumn();
+                handleMatches();
+            }
+            dropCounter = 0;
+        }
+
+        function checkCollision(x, y, gems) {
+            for (let i = 0; i < gems.length; i++) {
+                const newY = y + i;
+                if (newY >= BOARD_HEIGHT || (newY >= 0 && board[newY] && board[newY][x])) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function fixColumn() {
+            if (!activeColumn) return;
+            activeColumn.gems.forEach((color, i) => {
+                const boardY = activeColumn.y + i;
+                if (boardY < 0) {
+                    gameOver = true;
+                }
+                if (boardY >= 0) {
+                    board[boardY][activeColumn.x] = color;
+                }
+            });
+            activeColumn = null;
+            if (gameOver) return;
+        }
+
+        async function handleMatches() {
+             chainCount = 0;
+             let matchesFound;
+             do {
+                matchesFound = findAndClearMatches();
+                if (matchesFound) {
+                    chainCount++;
+                    isClearing = true;
+                    draw();
+                    await new Promise(resolve => setTimeout(resolve, FLASH_DURATION));
+                    removeFlashedGems();
+                    applyGravity();
+                    score += 100 * chainCount;
+                    updateScoreUI();
+                    isClearing = false;
+                    draw();
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+             } while (matchesFound && !gameOver);
+
+            if (!gameOver) {
+              createNewColumn();
+            }
+        }
+        
+        function findAndClearMatches() {
+            let matches = [];
+            for (let y = 0; y < BOARD_HEIGHT; y++) {
+                for (let x = 0; x < BOARD_WIDTH; x++) {
+                    if (board[y] && board[y][x]) {
+                        let hMatch = getMatch(x, y, 1, 0); if (hMatch.length >= 3) matches.push(...hMatch);
+                        let vMatch = getMatch(x, y, 0, 1); if (vMatch.length >= 3) matches.push(...vMatch);
+                        let d1Match = getMatch(x, y, 1, 1); if (d1Match.length >= 3) matches.push(...d1Match);
+                        let d2Match = getMatch(x, y, -1, 1); if (d2Match.length >= 3) matches.push(...d2Match);
+                    }
+                }
+            }
+            if (matches.length > 0) {
+                let uniqueMatches = [...new Set(matches.map(p => `${p.x},${p.y}`))]
+                                       .map(s => { const [x, y] = s.split(','); return {x: parseInt(x), y: parseInt(y)} });
+                score += uniqueMatches.length * 10;
+                uniqueMatches.forEach(p => { board[p.y][p.x] = 'flash'; });
+                return true;
+            }
+            return false;
+        }
+
+        function getMatch(startX, startY, dx, dy) {
+            let color = board[startY][startX];
+            let match = [{x: startX, y: startY}];
+            let x = startX + dx;
+            let y = startY + dy;
+            while (x >= 0 && x < BOARD_WIDTH && y >= 0 && y < BOARD_HEIGHT && board[y] && board[y][x] === color) {
+                match.push({x, y});
+                x += dx;
+                y += dy;
+            }
+            return match;
+        }
+        
+        function removeFlashedGems() {
+            for (let y = 0; y < BOARD_HEIGHT; y++) {
+                for (let x = 0; x < BOARD_WIDTH; x++) {
+                    if (board[y] && board[y][x] === 'flash') board[y][x] = null;
+                }
+            }
+        }
+
+        function applyGravity() {
+            for (let x = 0; x < BOARD_WIDTH; x++) {
+                let emptyRow = -1;
+                for (let y = BOARD_HEIGHT - 1; y >= 0; y--) {
+                    if (board[y] && board[y][x] === null && emptyRow === -1) {
+                        emptyRow = y;
+                    } else if (board[y] && board[y][x] !== null && emptyRow !== -1) {
+                        board[emptyRow][x] = board[y][x];
+                        board[y][x] = null;
+                        emptyRow--;
+                    }
+                }
+            }
+        }
+
+        function hardDrop() {
+            if (!activeColumn) return;
+            let dropAmount = 0;
+            while (!checkCollision(activeColumn.x, activeColumn.y + 1, activeColumn.gems)) {
+                activeColumn.y++;
+                dropAmount++;
+            }
+            score += dropAmount;
+            updateScoreUI();
+            fixColumn();
+            handleMatches();
+            dropCounter = 0;
+        }
+
+        function updateScoreUI() {
+            scoreElement.textContent = score;
+            const newLevel = Math.floor(score / LEVEL_UP_SCORE) + 1;
+            if (newLevel > level) {
+                level = newLevel;
+                activeDropSpeed *= SPEED_INCREASE_FACTOR;
+            }
+            levelElement.textContent = level;
+        }
+
+        function showGameOver() {
+            gameStarted = false;
+            finalScoreElement.textContent = score;
+            gameOverModal.classList.remove('hidden');
+        }
+
+        function gameLoop(time) {
+            if (gameOver) {
+                showGameOver();
+                return;
+            }
+            update(time);
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('keydown', event => {
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) {
+                 event.preventDefault();
+            }
+            if (!gameStarted || gameOver || isClearing || !activeColumn) return;
+            switch (event.key) {
+                // ★修正: 壁の衝突判定を追加
+                case 'ArrowLeft':
+                    if (activeColumn.x > 0 && !checkCollision(activeColumn.x - 1, activeColumn.y, activeColumn.gems)) {
+                        activeColumn.x--;
+                    }
+                    break;
+                case 'ArrowRight':
+                    if (activeColumn.x < BOARD_WIDTH - 1 && !checkCollision(activeColumn.x + 1, activeColumn.y, activeColumn.gems)) {
+                        activeColumn.x++;
+                    }
+                    break;
+                case 'ArrowUp':
+                case ' ':
+                    rotateColumn();
+                    break;
+                case 'ArrowDown':
+                    hardDrop();
+                    break;
+            }
+        });
+        
+        startButton.addEventListener('click', () => {
+            resetGame();
+        });
+
+        restartButton.addEventListener('click', () => {
+            resetGame();
+        });
+
+        // 初期描画
+        draw();
+        // ★修正: ゲーム開始前はダミーのNext配列を渡す
+        nextColumnGems = [];
+        drawNextGems();
+    </script>
+</body>
+</html>
